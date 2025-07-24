@@ -1,0 +1,61 @@
+<!-- food.ejs -->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="/dashboard">Foodiess</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item">
+              <a class="nav-link active" aria-current="page" href="/dashboard">Dashboard</a>
+            </li>
+            <% if (user && user.role === 'admin') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/admin">Admin</a>
+            </li>
+            <% } %>
+            <% if (user && user.role === 'user') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/menu">Menu/a>
+            </li>
+            <% } %>
+            <li class="nav-item">
+              <a class="nav-link" href="/logout">Logout</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+    
+<div class="container">
+    <div class="text-center">
+      <h2>Details</h2></div>
+      <br>
+      <% if (food) { %>
+        <div class="card mx-auto" style="width: 50%;">
+          <br><img src="/Images/<%= food.image %>"class="card-img-top"  alt="<%= food.name %>">
+          <div class="card-body">
+          <h2 class="card-title"><b>Name:</b><br> <%= food.name %></h2>
+          <p class="card-text"><b>Quantity:</b><br><%= food.quantity %></p>
+          <p class="card-text"><b>Price:</b><br>$<%= food.price %></p>
+          <p class="card-text"><b>Category:</b><br><%= food.category %></p>
+        </div>
+      </div>
+<% } else { %>
+    <p>No food item selected.</p>
+<% } %>
+<a href = "/menu"> Menu</a>
+  </div>
+</body>
+</html>
