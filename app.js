@@ -35,7 +35,6 @@ db.connect((err) => {
  
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static('public'));
- 
 app.use(session({
     secret: 'secret',
     resave: false,
@@ -70,13 +69,13 @@ const checkAdmin = (req, res, next) => {
 app.get('/', (req, res) => {
     res.render('index', { user: req.session.user, messages: req.flash('success')});
 });
+
 app.get('/register', (req, res) => {
     res.render('register', { messages: req.flash('error'), formData: req.flash('formData')[0] });
 });
  
 const validateRegistration = (req, res, next) => {
     const { username, email, password, address, contact } = req.body;
- 
     if (!username || !email || !password || !address || !contact) {
         return res.status(400).send('All fields are required.');
     }
@@ -153,30 +152,156 @@ app.get('/logout', (req, res) => {
     res.redirect('/');
 });
  
-// Menu 
-app.get('/menu', (req,res) => {
-    const category = req.query.category;
-    let sql = 'SELECT idmenuItems,name,image,quantity,price,category from menuItems';
-    let params = [];
+app.get('/menu', checkAuthenticated, async (req, res) => {
+    try {
+        const userId = req.session.user.id;
+        const selectedCategory = req.query.category; 
+        const searchName = req.query.name; 
 
-    if (category && category.trim() !== '') {
-        sql += ' WHERE category LIKE ?';
-        params.push('%' + category + '%');
-    }
-    
-    db.query(sql,params, (error, results) => {
-        if (error) {
-            console.error('Error fetching menu items:' ,error);
-            return res.status(500).send('Error fetching menu items');
+        //Searchbar
+        db.query('SELECT DISTINCT category FROM menuItems ORDER BY category', (err, categoryResults) => {
+            if (err) {
+                console.error('Error fetching categories:', err);
+                return res.status(500).send('Error loading categories for menu.');
             }
-        res.render('menu', { 
-            food: results,
+            const categories = categoryResults.map(row => row.category);
+
+            let query = 'SELECT * FROM menuItems';
+            const queryParams = [];
+            const conditions = [];
+            
+
+            if (selectedCategory && selectedCategory !== '') {
+                conditions.push('category = ?');
+                queryParams.push(selectedCategory);
+            }
+
+            if (searchName) {
+                conditions.push('name LIKE ?');
+                queryParams.push(`%${searchName}%`);
+            }
+
+            if (conditions.length > 0) {
+                query += ' WHERE ' + conditions.join(' AND ');
+            }
+
+            db.query(query, queryParams, (err, foodItems) => {
+                if (err) {
+                    console.error('Error fetching menu items:', err);
+                    return res.status(500).send('Error loading menu items.');
+                }
+
+                //Fetch favourite items
+                db.query('SELECT idmenuItems FROM user_favourite WHERE iduser = ?', [userId], (favErr, favResults) => {
+                    if (favErr) {
+                        console.error('Error fetching user favourites:', favErr);
+                        return res.status(500).send('Error loading favourites for menu.');
+                    }
+
+                    const favouriteItemIds = new Set(favResults.map(fav => fav.idmenuItems));
+
+                    //Add isFavourited flag to food items
+                    const foodWithFavStatus = foodItems.map(item => ({
+                        ...item,
+                        isFavourited: favouriteItemIds.has(item.idmenuItems)
+                    }));
+                    
+                    // For quantity
+                     foodItems.forEach(fooditem => {
+            const inCart = req.session.cart?.find(c => c.idmenuItems == fooditem.idmenuItems);
+            fooditem.quantity = inCart ? inCart.quantity : 0;
+         });
+
+                    //Render the menu page with all necessary data
+                    res.render('menu', { 
+                        food: foodWithFavStatus, 
+                        user: req.session.user, 
+                        selectedCategory: selectedCategory,
+                        searchName: searchName,           
+                        categories: categories,            
+                    });
+                });
+            });
+        });
+
+    } catch (error) {
+        console.error('Error in /menu route:', error);
+        res.status(500).send('Server error.');
+    }
+});
+
+
+// Decrease quantity
+app.post('/decreaseQuantity/:id', (req, res) => {
+  const id = req.params.id;
+  if (!req.session.cart) req.session.cart = [];
+
+  let item = req.session.cart.find(i => i.idmenuItems == id);
+  if (item && item.quantity > 0) {
+    item.quantity -= 1;
+  }
+
+  res.redirect('/menu');
+});
+
+app.get('/favourites', checkAuthenticated, (req, res) => {
+    const userId = req.session.user.id; 
+    db.query(`
+        SELECT mi.*, uf.created_at as favourited_at FROM menuItems mi
+        JOIN user_favourite uf ON mi.idmenuItems = uf.idmenuItems
+        WHERE uf.iduser = ? ORDER BY uf.created_at DESC`, [userId], (err, favouriteItems) => {
+        if (err) {
+            console.error('Error fetching favourite items:', err);
+            return res.status(500).send('Error fetching favourite items.');
+        }
+
+        res.render('favourites', {        
             user: req.session.user,
-            category: category
-        }); 
+            favouriteItems: favouriteItems 
+        });
     });
 });
- 
+
+app.post('/addfavourites/:idmenuItems', checkAuthenticated, (req, res) => {
+    const menuItemId = req.params.idmenuItems;
+    const userId = req.session.user.id;
+
+    db.query('SELECT * FROM user_favourite WHERE iduser = ? AND idmenuItems = ?', [userId, menuItemId], (err, results) => {
+        if (err) {
+            console.error('Error checking favourite status:', err);
+            return res.redirect('/menu?error=FailedToAdd');
+        }
+
+        if (results.length > 0) {
+            return res.redirect('/menu?info=AlreadyFavourited');
+        }
+
+        db.query('INSERT INTO user_favourite (iduser, idmenuItems) VALUES (?, ?)', [userId, menuItemId], (err, result) => {
+            if (err) {
+                console.error('Error adding to favourites:', err);
+                return res.redirect('/menu?error=FailedToAdd');
+            }
+            res.redirect('/menu?success=AddedToFavourites');
+        });
+    });
+});
+
+app.post('/removefavourite/:idmenuItems', checkAuthenticated, (req, res) => {
+    const menuItemId = req.params.idmenuItems;
+    const userId = req.session.user.id; 
+
+    db.query('DELETE FROM user_favourite WHERE iduser = ? AND idmenuItems = ?', [userId, menuItemId], (err, result) => {
+        if (err) {
+            console.error('Error removing from favourites:', err);
+            return res.redirect('/favourites?error=failedToRemove'); 
+        }
+        if (result && result.affectedRows === 0) {
+            return res.redirect('/favourites?info=itemNotFound'); 
+        }
+        res.redirect('/menu?success=removed'); 
+    });
+});
+
 // Inventory
 app.get('/inventory', checkAuthenticated, checkAdmin, (req, res) => {
     const sql = 'SELECT idmenuItems, name, image, quantity, price, category FROM menuItems';
@@ -211,6 +336,7 @@ app.get('/cart', checkAuthenticated, (req, res) => {
     const cart = req.session.cart || [];
     res.render('cart', { cart, user: req.session.user });
 });
+
 
 app.post('/add-to-cart/:id', checkAuthenticated, (req, res) => {
     const idmenuItems = parseInt(req.params.id);
@@ -249,6 +375,12 @@ app.post('/add-to-cart/:id', checkAuthenticated, (req, res) => {
         });
 });
 
+app.post('/editCart/:idmenuItems', (req,res) => {
+    const idmenuItems = req.params.id;
+    const sql = 'SELECT * FROM menuItems WHERE idmenuItems = ?';
+    
+})
+
 app.post('/deleteCart/:idmenuItems', (req, res) => {
     const itemId = req.params.idmenuItems;
     req.session.cart = req.session.cart.filter(item => item.idmenuItems != itemId);
@@ -258,23 +390,31 @@ app.post('/deleteCart/:idmenuItems', (req, res) => {
 app.post('/placeOrder', async (req, res) => {
   try {
     if (!req.session.user) {
-      return res.redirect('/login');
+        return res.redirect('/login');
     }
     const body = req.body;
     const cartItems = [];
+    const selectedItemIds = Array.isArray(body.selectedItemIds) ? body.selectedItemIds : [body.selectedItemIds].filter(Boolean);
+    selectedItemIds.forEach(id => {
+        const itemId = id; 
+        const itemName = body[`itemName_${itemId}`];
+        const itemPrice = parseFloat(body[`itemPrice_${itemId}`]);
+        const itemQuantity = parseInt(body[`quantity_${itemId}`], 10); 
 
-    for (let i = 0; i < 100; i++) {
-      if (!body[`idmenuItems_${i}`]) break;
-      cartItems.push({
-        idmenuItems: body[`idmenuItems_${i}`],
-        name: body[`name_${i}`],
-        price: parseFloat(body[`price_${i}`]),
-        quantity: parseInt(body[`quantity_${i}`], 10)
-      });
-    }
+        if (itemId && itemName && !isNaN(itemPrice) && !isNaN(itemQuantity) && itemQuantity > 0) {
+            cartItems.push({
+            idmenuItems: itemId,
+            name: itemName,
+            price: itemPrice,
+            quantity: itemQuantity
+            });
+        } else {
+            console.warn(`Skipping invalid/incomplete item data for selected ID: ${itemId}`);
+        }
+    });
 
     if (cartItems.length === 0) {
-      return res.status(400).send('Cart is empty or invalid');
+      return res.status(400).send('No valid items selected for order, or cart is empty.');
     }
 
     let totalAmount = 0;
@@ -283,47 +423,47 @@ app.post('/placeOrder', async (req, res) => {
     });
 
     const insertOrderSql = 'INSERT INTO orders (iduser, name, total_amount, order_date) VALUES (?, ?, ?, NOW())';
-    db.query(insertOrderSql, [req.session.user.id, req.session.user.username, totalAmount,'Processing'], (err, orderResult) => {
-      if (err) {
-        console.error('Error inserting order:', err);
-        return res.status(500).send('Error placing order');
-      }
-      const orderId = orderResult.insertId;
-      const insertItemsSql = 'INSERT INTO orderItems (idorder, idmenuItems, quantity, price) VALUES ?';
-      const itemsData = cartItems.map(item => [
-        orderId,
-        item.idmenuItems,
-        item.quantity,
-        item.price
-      ]);
-
-      db.query(insertItemsSql, [itemsData], (err2) => {
-        if (err2) {
-          console.error('Error inserting order items:', err2);
-          return res.status(500).send('Error saving order items');
+    db.query(insertOrderSql, [req.session.user.id, req.session.user.username, totalAmount], (err, orderResult) => { 
+        if (err) {
+            console.error('Error inserting order:', err);
+            return res.status(500).send('Error placing order');
         }
+        const orderId = orderResult.insertId;
+        const insertItemsSql = 'INSERT INTO orderItems (idorder, idmenuItems, quantity, price) VALUES ?';
+        const itemsData = cartItems.map(item => [
+            orderId,
+            item.idmenuItems,
+            item.quantity,
+            item.price
+        ]);
+
+        db.query(insertItemsSql, [itemsData], (err2) => {
+            if (err2) {
+            console.error('Error inserting order items:', err2);
+            return res.status(500).send('Error saving order items');
+            }
 
         req.session.cart = []; // clear cart
         res.redirect(`/orderConfirmation?idorder=${orderId}`);
-      });
+       });
     });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    }
 });
 
 //Order Confirmation
 app.get('/orderConfirmation', async (req, res) => {
-  const orderId = req.query.idorder;
-  const dbPromise = db.promise();
+    const orderId = req.query.idorder;
+    const dbPromise = db.promise();
 
-  try {
-    const [orderRows] = await dbPromise.query(
-      `SELECT * FROM orders WHERE idorder = ?`,
-      [orderId]
-    );
+    try {
+        const [orderRows] = await dbPromise.query(
+        `SELECT * FROM orders WHERE idorder = ?`,
+        [orderId]
+        );
 
     const [itemRows] = await dbPromise.query(
         `SELECT oi.*, m.name AS foodName FROM orderItems oi 

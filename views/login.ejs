@@ -14,13 +14,6 @@
                 <% }); %>
             </div>
         <% } %>
-        <% if (messages && messages.length > 0) { %>
-            <div class="alert alert-success">
-                <% messages.forEach(function(message) { %>
-                    <p><%= message %></p>
-                <% }); %>
-            </div>
-        <% } %>
         <form action="/login" method="POST" class="mt-4">
             <div class="form-group">
                 <label for="email">Email:</label>
