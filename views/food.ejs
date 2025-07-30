@@ -73,9 +73,16 @@
       <% } else { %>
         <p class="text-center">No food item selected.</p>
       <% } %>
-      <div class="mx-auto text-center mt-4" style="width: 72%;">
-        <a href="/menu" class="btn btn-secondary w-100">Back to Menu</a>
-      </div>
+      <% if (user && user.role === 'user') { %>
+        <div class="mx-auto text-center mt-4" style="width: 72%;">
+          <a href="/menu" class="btn btn-secondary w-100">Back to Menu</a>
+        </div>
+      <% } %>
+      <% if (user && user.role === 'admin') { %>
+        <div class="mx-auto text-center mt-4" style="width: 72%;">
+          <a href="/inventory" class="btn btn-secondary w-100">Back to Inventory</a>
+        </div>
+      <% } %>
     </div>
 </body>
 </html>

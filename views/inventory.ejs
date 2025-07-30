@@ -28,6 +28,9 @@
           <ul class="navbar-nav ms-auto">
             <% if (user && user.role === 'admin') { %>
             <li class="nav-item">
+              <a class="nav-link" href="/dashboard">Dashboard</a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link active" aria-current="page" href="/inventory">Inventory</a>
             </li>
             <li class="nav-item">

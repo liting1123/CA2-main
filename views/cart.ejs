@@ -8,7 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <style>
         .table-img {
-            width: 80px; /* Smaller image size for cart */
+            width: 80px; 
             height: 80px;
             object-fit: cover;
         }
@@ -62,14 +62,12 @@
         </div>
       </div>
     </nav>
-
     <div class="container mt-2">
         <br>
         <div class="text-center"><h2>Your Cart <i class="fas fa-shopping-cart"></i></h2></div>
         <br>
-
         <% if (cart && cart.length > 0) { %>
-            <form action="/placeOrder" method="POST">
+            <form action="/updateCartQuantities" method="POST" id="updateCartForm"> 
                 <table class="table table-hover small text-center">
                     <thead>
                         <tr>
@@ -90,40 +88,44 @@
                                 <td><%= item.name %></td>
                                 <td><img src="/Images/<%= item.image %>" class="table-img" alt="<%= item.name %>"></td>
                                 <td>
-                                    <%= item.quantity %>
-                                    </td>
+                                    <input type="number" name="quantity_<%= item.idmenuItems %>" value="<%= item.quantity %>" min="1" class="form-control text-center" style="width: 80px; display: inline-block;">
+                                    <input type="hidden" name="idmenuItems_<%= item.idmenuItems %>" value="<%= item.idmenuItems %>">
+                                    <input type="hidden" name="itemName_<%= item.idmenuItems %>" value="<%= item.name %>">
+                                    <input type="hidden" name="itemPrice_<%= item.idmenuItems %>" value="<%= item.price %>">
+                                    <input type="hidden" name="itemImage_<%= item.idmenuItems %>" value="<%= item.image %>">
+                                </td>
                                 <td>$<%= item.price %></td>
                                 <td>$<%= itemTotal.toFixed(2) %></td>
                                 <td>
-                                    <form action="/remove-from-cart/<%= item.idmenuItems %>" method="POST" style="display:inline;">
+                                    <form action="/deleteCart/<%= item.idmenuItems %>" method="POST" style="display:inline;">
                                         <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                    </form>                 
-                                    
+                                    </form>
                                 </td>
                             </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+                <div class="cart-total">
+                    Cart Total: $<%= overallTotal.toFixed(2) %>
+                </div>
+                <div class="button-group">
+                    <a href="/menu" class="btn btn-secondary me-2">Back to Menu</a>
+                    <button type="submit" class="btn btn-info me-2">Update Quantities</button>
+                    
+                    <form action="/placeOrder" method="POST" style="display:inline;">
+                        <% cart.forEach(item => { %>
                             <input type="hidden" name="selectedItemIds" value="<%= item.idmenuItems %>">
                             <input type="hidden" name="itemName_<%= item.idmenuItems %>" value="<%= item.name %>">
                             <input type="hidden" name="itemPrice_<%= item.idmenuItems %>" value="<%= item.price %>">
                             <input type="hidden" name="quantity_<%= item.idmenuItems %>" value="<%= item.quantity %>">
                         <% }); %>
-                    </tbody>
-                </table>
-
-                <div class="cart-total">
-                    Cart Total: $<%= overallTotal.toFixed(2) %>
-                </div>
-
-                <div class="button-group">
-                    <a href="/menu" class="btn btn-secondary me-2">Back to Menu</a>
-                     <a href="/editCart" class="btn btn-secondary me-2">Edit Cart</a>                 
-                    <button type="submit" class="btn btn-success">Place Order</button>
+                        <button type="submit" class="btn btn-success">Place Order</button>
+                    </form>
                 </div>
             </form>
         <% } else { %>
             <p class="text-center mt-5">Your cart is empty. Go to <a href="/menu">Menu</a> to add some items!</p>
         <% } %>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

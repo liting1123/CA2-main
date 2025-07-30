@@ -56,15 +56,7 @@ const checkAuthenticated = (req, res, next) => {
         res.redirect('/login');
     }
 };
- 
-const checkAdmin = (req, res, next) => {
-    if (req.session.user && req.session.user.role === 'admin') { 
-        return next();
-    } else {
-        req.flash('error', 'Sorry, Access denied!');
-        res.redirect('/dashboard');
-    }
-};
+  
  
 app.get('/', (req, res) => {
     res.render('index', { user: req.session.user, messages: req.flash('success')});
@@ -143,15 +135,12 @@ app.get('/dashboard', checkAuthenticated, (req, res) => {
     res.render('dashboard', { user: req.session.user });
 });
 
-app.get('/admin', checkAuthenticated, checkAdmin, (req, res) => {
-    res.render('admin', { user: req.session.user });
-});
 
 app.get('/logout', (req, res) => {
     req.session.destroy();
     res.redirect('/');
 });
- 
+
 app.get('/menu', checkAuthenticated, async (req, res) => {
     try {
         const userId = req.session.user.id;
@@ -169,7 +158,6 @@ app.get('/menu', checkAuthenticated, async (req, res) => {
             let query = 'SELECT * FROM menuItems';
             const queryParams = [];
             const conditions = [];
-            
 
             if (selectedCategory && selectedCategory !== '') {
                 conditions.push('category = ?');
@@ -206,12 +194,6 @@ app.get('/menu', checkAuthenticated, async (req, res) => {
                         isFavourited: favouriteItemIds.has(item.idmenuItems)
                     }));
                     
-                    // For quantity
-                     foodItems.forEach(fooditem => {
-            const inCart = req.session.cart?.find(c => c.idmenuItems == fooditem.idmenuItems);
-            fooditem.quantity = inCart ? inCart.quantity : 0;
-         });
-
                     //Render the menu page with all necessary data
                     res.render('menu', { 
                         food: foodWithFavStatus, 
@@ -230,18 +212,55 @@ app.get('/menu', checkAuthenticated, async (req, res) => {
     }
 });
 
+// Increase quantity
+app.post('/increaseQuantity/:id', (req, res) => {
+  const id = req.params.id;
+
+  if (!req.session.cart) req.session.cart = [];
+
+  let item = req.session.cart.find(i => i.idmenuItems == id);
+
+  if (item) {
+    item.quantity += 1;
+    return res.redirect('/menu');
+  } 
+
+  const sql = 'SELECT * FROM menuItems WHERE idmenuItems = ?';
+  db.query(sql,[id], (error,results) => {
+    if (error || results.length === 0){
+        console.error("Error fetching item for cart:", error);
+        return res.redirect('/menu')
+    }
+
+    const foodItem = results[0];
+        req.session.cart.push({
+         idmenuItems: foodItem.idmenuItems,
+            name: foodItem.name,
+            price: foodItem.price,
+            quantity:1,
+            image:foodItem.image
+    })
+    res.redirect('/menu')
+  })
+});
+
+
 
 // Decrease quantity
 app.post('/decreaseQuantity/:id', (req, res) => {
   const id = req.params.id;
-  if (!req.session.cart) req.session.cart = [];
-
-  let item = req.session.cart.find(i => i.idmenuItems == id);
-  if (item && item.quantity > 0) {
-    item.quantity -= 1;
-  }
-
-  res.redirect('/menu');
+  if (!req.session.cart){
+     req.session.cart = [];
+}
+let item = req.session.cart.find(i => i.idmenuItems == id);
+if (item) {
+    if (item.quantity > 1){
+        item.quantity -= 1;
+    } else{
+        req.session.cart = req.session.cart.filter(i => i.idmenuItems != id);
+    }
+}
+res.redirect('/menu')
 });
 
 app.get('/favourites', checkAuthenticated, (req, res) => {
@@ -303,7 +322,7 @@ app.post('/removefavourite/:idmenuItems', checkAuthenticated, (req, res) => {
 });
 
 // Inventory
-app.get('/inventory', checkAuthenticated, checkAdmin, (req, res) => {
+app.get('/inventory', checkAuthenticated, (req, res) => {
     const sql = 'SELECT idmenuItems, name, image, quantity, price, category FROM menuItems';
     db.query(sql, (error, results) => {
         if (error) {
@@ -333,10 +352,12 @@ app.get('/food/:id', (req, res) => {
 });
 
 app.get('/cart', checkAuthenticated, (req, res) => {
-    const cart = req.session.cart || [];
+    let cart = req.session.cart || [];
+    cart = cart.filter(item => item.quantity > 0)
+    req.session.cart = cart;
+
     res.render('cart', { cart, user: req.session.user });
 });
-
 
 app.post('/add-to-cart/:id', checkAuthenticated, (req, res) => {
     const idmenuItems = parseInt(req.params.id);
@@ -377,9 +398,38 @@ app.post('/add-to-cart/:id', checkAuthenticated, (req, res) => {
 
 app.post('/editCart/:idmenuItems', (req,res) => {
     const idmenuItems = req.params.id;
+     const item = req.session.cart?.find(item => item.idmenuItems === idmenuItems);
     const sql = 'SELECT * FROM menuItems WHERE idmenuItems = ?';
     
 })
+
+app.post('/updateCartQuantities', checkAuthenticated, (req, res) => {
+    if (!req.session.cart) {
+        req.session.cart = [];
+    }
+
+    const updatedCart = [];
+    for (const key in req.body) {
+        if (key.startsWith('quantity_')) {
+            const idmenuItems = parseInt(key.split('_')[1]);
+            const newQuantity = parseInt(req.body[key]);
+            const itemName = req.body[`itemName_${idmenuItems}`];
+            const itemPrice = req.body[`itemPrice_${idmenuItems}`];
+            const itemImage = req.body[`itemImage_${idmenuItems}`];
+            if (newQuantity > 0 && !isNaN(newQuantity) && !isNaN(itemPrice) && itemName && itemImage) {
+                updatedCart.push({
+                    idmenuItems: idmenuItems,
+                    name: itemName,
+                    price: itemPrice,
+                    quantity: newQuantity,
+                    image: itemImage
+                });
+            }
+        }
+    }
+    req.session.cart = updatedCart;
+    res.redirect('/cart');
+});
 
 app.post('/deleteCart/:idmenuItems', (req, res) => {
     const itemId = req.params.idmenuItems;
@@ -482,7 +532,7 @@ app.get('/orderConfirmation', async (req, res) => {
     }
 });
 
-app.get('/addInventory', checkAuthenticated, checkAdmin, (req, res) => {
+app.get('/addInventory', checkAuthenticated, (req, res) => {
     res.render('addInventory', {user: req.session.user } ); 
 });
 
@@ -625,6 +675,57 @@ app.post('/processPayment', checkAuthenticated, (req, res) => {
         console.error('Error updating order status:', err3);
     });
 });
+
+//Admin view user
+app.get('/viewUsers', (req,res) => {
+    const sql = 'SELECT * FROM user';
+    db.query(sql, (error,results) =>{
+        if (error) {
+            console.error("Error fetching users:", error);
+            req.flash("error", "User cannot be loaded");
+            return res.redirect('/admin');
+        }
+        res.render('viewUsers',{
+            users:results,
+            user: req.session.user,
+            messages: req.flash('success')
+        })
+    })
+})
+
+// Edit Userview
+app.get('/editUser/:id',(req,res) => {
+    const id = req.params.id;
+    const sql = 'SELECT * FROM user WHERE id = ?';
+
+    db.query( sql , [id], (error, results) => {
+        if (error) {
+            console.error('Database query error:', error.message);
+            return res.status(500).send('Error retrieving user by ID');
+        }
+
+        if (results.length > 0 ) {
+            res.render('editUser', { user: results[0],user: req.session.user });
+        } else {
+            res.status(404).send('user not found');
+        }
+    });
+});
+
+app.post('/editUser/:id', (req,res) => {
+    const id = req.params.id;
+    const {username, email ,contact,address, role} = req.body;
+    
+    const sql = 'Update user SET username =?,, email =? , contact = ?  , role = ? WHERE id = ?';
+    db.query(sql, [ username, email, contact, address,role,id], (error, result) => {
+        if (error){
+            console.error('Update error:', error);
+            return res.status(500).send('Error updating user item');
+        }else{
+            res.redirect('/viewUsers');
+       }
+    });
+}); 
 
 // Starting the server
 const PORT = 3000;
